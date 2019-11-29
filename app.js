@@ -3,7 +3,7 @@ const shell = require('shelljs');
 const express = require('express');
 
 const port = 3001;
-
+const cors = require('cors');
 const staticDir = 'static/';
 const tempDirRoot = 'temp/';
 const outputDir = 'output/';
@@ -63,7 +63,7 @@ const app = express();
 const bodyParser = require('body-parser');
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
-
+app.use(cors());
 // Allow static html files and output files to be accessible
 app.use('/', express.static(staticDir));
 app.use('/output', express.static(outputDir));
@@ -129,8 +129,18 @@ app.post('/convert', function (req, res) {
                     }
                     
                     shell.rm('-r', `${tempDirRoot}${id}`); // Delete temporary files for this conversion
+                    console.log("This is line 132 : "+ JSON.stringify(result));
                     
+                    
+                    var currentPath = process.cwd();
+                    var imgsrcf = currentPath + '/' + result.imageURL;
+                         var bitmap = fs.readFileSync(imgsrcf);
+                    // convert binary data to base64 encoded string
+                    var imgbase64 = new Buffer(bitmap).toString('base64');
+                    var base64image = `data:image/png;base64,${imgbase64}`;
+                    console.log("This is line 141" + base64image);
                     res.end(JSON.stringify(result));
+
                 });
                 
             } else {
