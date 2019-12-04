@@ -130,7 +130,13 @@ app.post('/convert', function (req, res) {
                     
                     shell.rm('-r', `${tempDirRoot}${id}`); // Delete temporary files for this conversion
                     
-                    res.end(JSON.stringify(result));
+                    var currentPath = process.cwd();
+                    var imgsrcf = currentPath + '/' + result.imageURL;
+                    var bitmap = fs.readFileSync(imgsrcf);
+                    // convert binary data to base64 encoded string
+                    var imgbase64 = new Buffer(bitmap).toString('base64');
+                    var base64image = `data:image/png;base64,${imgbase64}`;
+                    res.end(base64image);
                 });
                 
             } else {
