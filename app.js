@@ -24,8 +24,8 @@ const dvisvgmCMD = 'dvisvgm --no-fonts --scale=OUTPUT_SCALE --exact equation.dvi
 const dockerImageName = 'blang/latex:ubuntu'; // https://github.com/blang/latex-docker
 
 // Command to run the above commands in a new Docker container (with LaTeX preinstalled)
-const dockerCMD = `cd TEMP_DIR_NAME && exec docker run --rm -i --user="$(id -u):$(id -g)" --net=none -v "$PWD":/data "${dockerImageName}" /bin/sh -c "${latexCMD} && ${dvisvgmCMD}"`;
-
+const dockerCMD = `cd TEMP_DIR_NAME && exec docker run --memory=6g --rm -i --user="$(id -u):$(id -g)" --net=none -v "$PWD":/data "${dockerImageName}" /bin/sh -c "${latexCMD} && ${dvisvgmCMD}"`;
+console.log(dockerCMD);
 // Commands to convert .svg to .png/.jpg and compress
 const svgToImageCMD = 'svgexport SVG_FILE_NAME OUT_FILE_NAME';
 const imageMinCMD = 'imagemin IN_FILE_NAME > OUT_FILE_NAME';
@@ -62,16 +62,17 @@ const app = express();
 
 const bodyParser = require('body-parser');
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended: true}));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
 // Allow static html files and output files to be accessible
 app.use('/', express.static(staticDir));
 app.use('/output', express.static(outputDir));
 
 // POST call for LaTeX to image conversion. Convert and return image URL or error message
-app.post('/convert', function (req, res) {
+app.post('/convert', function(req, res) {
     // Ensure valid inputs
     if (req.body.latexInput) {
+        console.log("line 75 : This is latexinput : " + req.body.latexInput)
         if (validScales.includes(req.body.outputScale)) {
             if (validFormats.includes(req.body.outputFormat)) {
                 const id = generateID(); // Generate unique ID for filename
@@ -79,28 +80,31 @@ app.post('/convert', function (req, res) {
                 let eqnInput = req.body.latexInput.trim();
                 if (/\\\\(?!$)/.test(eqnInput) && !eqnInput.includes("&")) { // if any "\\" not at EOF, unless intentionally aligned with &
                     eqnInput = '&' + eqnInput.replace(/\\\\(?!$)/g, "\\\\&"); // replace any "\\" not at EOF with "\\&", to enforce left alignment
+
                 }
-                
+
                 shell.mkdir(`${tempDirRoot}${id}`);
-                
+
                 const document = documentTemplate.replace('EQUATION', eqnInput);
+                // console.log("This is line 89 : " +  document);
                 fs.writeFileSync(`${tempDirRoot}${id}/equation.tex`, document); // Write generated .tex file
-                
+                // var contents = fs.readFileSync(`${tempDirRoot}${id}/equation.tex`, 'utf8');
+                // console.log("Line 92 : " + contents);
                 let result = {};
-                
+
                 let finalDockerCMD = dockerCMD.replace('TEMP_DIR_NAME', `${tempDirRoot}${id}`);
                 finalDockerCMD = finalDockerCMD.replace('OUTPUT_SCALE', validScalesInternal[validScales.indexOf(req.body.outputScale)]);
-                
+
                 const fileFormat = req.body.outputFormat.toLowerCase();
-                
+
                 // Asynchronously compile and render the LaTeX to an image
-                shell.exec(finalDockerCMD, {async: true}, function() {
+                shell.exec(finalDockerCMD, { async: true }, function() {
                     if (fs.existsSync(`${tempDirRoot}${id}/equation.svg`)) {
                         if (fileFormat === 'svg') { // Converting to SVG, no further processing required
                             shell.cp(`${tempDirRoot}${id}/equation.svg`, `${outputDir}img-${id}.svg`);
                             result.imageURL = `${httpOutputURL}img-${id}.svg`;
                         } else {
-                            
+
                             // Convert svg to png/jpg
                             let finalSvgToImageCMD = svgToImageCMD.replace('SVG_FILE_NAME', `${tempDirRoot}${id}/equation.svg`);
                             finalSvgToImageCMD = finalSvgToImageCMD.replace('OUT_FILE_NAME', `${tempDirRoot}${id}/equation.${fileFormat}`);
@@ -115,10 +119,10 @@ app.post('/convert', function (req, res) {
                                 let finalImageMinCMD = imageMinCMD.replace('IN_FILE_NAME', `${tempDirRoot}${id}/equation.${fileFormat}`);
                                 finalImageMinCMD = finalImageMinCMD.replace('OUT_FILE_NAME', `${tempDirRoot}${id}/equation_compressed.${fileFormat}`);
                                 shell.exec(finalImageMinCMD);
-                                
+
                                 // Final image
                                 shell.cp(`${tempDirRoot}${id}/equation_compressed.${fileFormat}`, `${outputDir}img-${id}.${fileFormat}`);
-                                
+
                                 result.imageURL = `${httpOutputURL}img-${id}.${fileFormat}`;
                             } else {
                                 result.error = `Error converting SVG file to ${fileFormat.toUpperCase()} image.`;
@@ -127,30 +131,28 @@ app.post('/convert', function (req, res) {
                     } else {
                         result.error = 'Error converting LaTeX to image. Please ensure the input is valid.';
                     }
-                    
+
                     shell.rm('-r', `${tempDirRoot}${id}`); // Delete temporary files for this conversion
-                    console.log("This is line 132 : "+ JSON.stringify(result));
-                    
-                    
+                    // console.log("This is line 132 : "+ JSON.stringify(result));
+
+
                     var currentPath = process.cwd();
                     var imgsrcf = currentPath + '/' + result.imageURL;
-                         var bitmap = fs.readFileSync(imgsrcf);
+                    var bitmap = fs.readFileSync(imgsrcf);
                     // convert binary data to base64 encoded string
                     var imgbase64 = new Buffer(bitmap).toString('base64');
-                    var base64image = `data:image/png;base64,${imgbase64}`;
-                    console.log("This is line 141" + base64image);
-                    res.end(JSON.stringify(result));
-
+                    var base64image = `data:image/${fileFormat};base64,${imgbase64}`;
+                    res.end(base64image);
                 });
-                
+
             } else {
-                res.end(JSON.stringify({error: 'Invalid image format'}));
+                res.end(JSON.stringify({ error: 'Invalid image format' }));
             }
         } else {
-            res.end(JSON.stringify({error: 'Invalid scale'}));
+            res.end(JSON.stringify({ error: 'Invalid scale' }));
         }
     } else {
-        res.end(JSON.stringify({error: 'No LaTeX input provided'}));
+        res.end(JSON.stringify({ error: 'No LaTeX input provided' }));
     }
 });
 
