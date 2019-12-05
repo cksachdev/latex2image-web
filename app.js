@@ -133,9 +133,6 @@ app.post('/convert', function(req, res) {
                     }
 
                     shell.rm('-r', `${tempDirRoot}${id}`); // Delete temporary files for this conversion
-                    // console.log("This is line 132 : "+ JSON.stringify(result));
-
-
                     var currentPath = process.cwd();
                     var imgsrcf = currentPath + '/' + result.imageURL;
                     var bitmap = fs.readFileSync(imgsrcf);
